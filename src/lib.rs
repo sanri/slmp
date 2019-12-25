@@ -1,3 +1,5 @@
+mod slmp_core;
+
 #[cfg(test)]
 mod tests {
     #[test]
