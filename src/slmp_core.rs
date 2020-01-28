@@ -15,14 +15,16 @@ pub(crate) enum DeviceBit{
 }
 
 
-pub(crate) trait Request{
+//request 请求
+pub(crate) trait Req{
   //序列化
   fn serialize(&self)->Vec<u8>;
 }
 
-pub(crate) trait Response {
+//response 响应
+pub(crate) trait Res {
   //反序列化 Deserialization
-  fn deserialization(data: &[u8]) -> Option<Self>;
+  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<(), ()>;
 }
 
 //批量读 字
@@ -75,17 +77,16 @@ impl Destination {
     return out;
   }
 
-  fn deserialization(data: &[u8]) -> Option<Self> {
+  fn deserialization(&mut self,data: &[u8]) ->Result<(),()> {
     //网络编号(1) + 站号(1) + 模块编号(2) + 多点站号(1) = 5 字节
     if data.len() < 5 {
-      return Option::None;
+      return Err(());
     }
-    let mut out: Destination = Destination { network: 0, station: 0, module: 0, multidrop_station: 0 };
-    out.network = data[0];
-    out.station = data[1];
-    out.module = d2.from_le_bytes([data[2], data[3]]);
-    out.multidrop_station = data[4];
-    return Option::Some(out);
+    self.network = data[0];
+    self.station = data[1];
+    self.module = u16::from_le_bytes([data[2], data[3]]);
+    self.multidrop_station = data[4];
+    return Ok(());
   }
 }
 
@@ -97,7 +98,7 @@ pub(crate) struct ReqReadWords{
   number:u16,
 }
 
-impl Request for ReqReadWords {
+impl Req for ReqReadWords {
   fn serialize(&self) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::with_capacity(30);
     //副帧头
@@ -158,7 +159,40 @@ fn test_req_read_words_serialize() {
 //批量读响应(字软元件)
 struct ResReadWords {
   des: Destination,
-  data: std::result::Result<Vec<u16>, u16>,
+  data: Vec<u16>,
+}
+
+impl Res for ResReadWords {
+  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<(), ()> {
+    if data.len() < 11 {
+      return Err(());
+    }
+    //检查副帧头
+    if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+      return Err(());
+    }
+    //检查地址
+    let r = self.des.deserialization(&data[2..=6]);
+    if r == Err(()) {
+      return Err(());
+    }
+    //获取响应数据长
+    let l: u16 = u16::from_le_bytes(data[7], data[8]);
+    if data.len() != (l as usize + 9) || (l % 2 == 1) {//l需为偶数
+      return Err(());
+    }
+    //检查结束代码
+    if data[9] != 0 || data[10] != 0 {
+      self.data.clear();
+      return Ok(());
+    }
+    //拷贝数据
+    for i in 0..(l / 2 - 1) {
+      let v = u16::from_le_bytes(ata[11 + i * 2], data[12 + i * 2]);
+      self.data.push(v);
+    }
+    return Ok(());
+  }
 }
 
 
