@@ -146,13 +146,14 @@ fn test_req_read_words_serialize() {
     des: Destination::new(),
     device: DeviceWord::D,
     head_number: 1,
-    number: 1,
+    number: 2,
   };
 
   print!("ReqReadWords:");
   for i in d.serialize() {
     print!(" {:#04X}", i);
   }
+  println!(" ");
 }
 
 //批量读响应(字软元件)
@@ -183,7 +184,7 @@ impl Res for ResReadWords {
     }
     //检查结束代码
     self.end_code = u16::from_le_bytes([data[9], data[10]]);
-    if endCode != 0 {
+    if self.end_code != 0 {
       self.data.clear();
       return Ok(());
     }
@@ -239,8 +240,8 @@ impl Req for ReqWriteWords {
     }
     //目标地址
     let des = self.des.serialize();
-    for i in des {
-      out.push(i);
+    for i in &des {
+      out.push(i.clone());
     }
     //请求数据长,先占位
     out.push(0x0);
@@ -263,13 +264,13 @@ impl Req for ReqWriteWords {
     //软元件代码
     out.push(DeviceCode::D as u8);
     //软元件点数
-    let n = self.number.to_le_bytes();
+    let n :[u8;2]= (self.data.len() as u16).to_le_bytes();
     for i in 0..2 {
       out.push(n[i]);
     }
     //数据
-    for v in data {
-      let l = v.to_te_bytes();
+    for v in &self.data {
+      let l = v.to_le_bytes();
       for i in 0..2 {
         out.push(l[i]);
       }
@@ -281,6 +282,22 @@ impl Req for ReqWriteWords {
     out[8] = lv[1];
     out
   }
+}
+
+#[test]
+fn test_req_write_words_serialize() {
+  let mut d: ReqWriteWords = ReqWriteWords {
+    des: Destination::new(),
+    device: DeviceWord::D,
+    head_number: 1,
+    data:vec![1,2],
+  };
+
+  print!("ReqWriteWords:");
+  for i in d.serialize() {
+    print!(" {:#04X}", i);
+  }
+  println!(" ");
 }
 
 
@@ -311,10 +328,6 @@ impl Res for ResWriteWords {
     }
     //检查结束代码
     self.end_code = u16::from_le_bytes([data[9], data[10]]);
-    if endCode != 0 {
-      self.data.clear();
-      return Ok(());
-    }
     return Ok(());
   }
 }
