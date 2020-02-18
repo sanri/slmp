@@ -1,39 +1,34 @@
-use std::net::TcpStream;
-use std::net::Shutdown::Both;
-
 mod slmp_core;
 
-pub struct Slmp{
-  con: Option<TcpStream>,
-  buffer:Vec<u8>,
-}
-
-// 建立连接
-
-
-// 批量读取字软元件
-pub fn read_words(){
-
-}
-
-// 批量写入字软元件
+use std::net::{TcpStream, ToSocketAddrs};
+use crate::slmp_core::read_words;
 
 
 #[test]
 fn test() {
-  let mut slmp = Slmp {
-    con: None,
-    buffer: Vec::with_capacity(512)
-  };
-
-  if let Ok(stream) = TcpStream::connect("192.168.10.250:2025"){
-    slmp.con = Some(stream);
+  println!("test begin");
+  if let Ok(mut stream) = TcpStream::connect("192.168.10.250:2025") {
     println!("connect ok");
-  }else{
+
+    let r = read_words(&mut stream,1,1);
+    match r{
+      Ok(d)=>{
+        println!("读取到{}个寄存器",d.len());
+        for v in d{
+          print!("{}, ",v);
+        }
+        println!(" ");
+      },
+      Err(v)=>{
+        println!("通信错误，错误码 = {}",v);
+      }
+    }
+
+    stream.shutdown(std::net::Shutdown::Both);
+    println!("connect shutdown");
+  } else {
     println!("connect error");
     return;
   }
 
-  slmp.con.unwrap().shutdown(Both);
-  println!("connect shutdown");
 }

@@ -1,6 +1,8 @@
 use std::net::{IpAddr,Ipv4Addr};
-use std::vec;
-use std::path::Prefix::DeviceNS;
+use std::net::{TcpStream, ToSocketAddrs,Shutdown};
+use std::io::prelude::*;
+use std::{vec, io};
+use std::{thread, time};
 
 //字软元件
 pub(crate) enum DeviceWord {
@@ -24,17 +26,8 @@ pub(crate) trait Req{
 //response 响应
 pub(crate) trait Res {
   //反序列化 Deserialization
-  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<(), ()>;
-}
-
-//批量读 字
-fn read_words(device:DeviceWord, head_number:u32, number:u16){
-
-}
-
-//批量读 位
-fn read_bits(device:DeviceBit,head_number:u32,number:u16){
-
+  //如果报文结构正确，但是还不完整，返回 Ok(0)
+  fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()>;
 }
 
 const REQUSET:[u8;2]=[0x50,0x00];
@@ -91,11 +84,22 @@ impl Destination {
 }
 
 //批量读请求(字软元件)
-pub(crate) struct ReqReadWords{
+struct ReqReadWords{
   des:Destination,
   device:DeviceWord,  //字元件类型
   head_number:u32,    //元件编号
   number:u16,         //元件数量
+}
+
+impl ReqReadWords {
+  fn new() -> ReqReadWords {
+    ReqReadWords {
+      des: Destination::new(),
+      device: DeviceWord::D,
+      head_number: 1,
+      number: 1
+    }
+  }
 }
 
 impl Req for ReqReadWords {
@@ -140,21 +144,21 @@ impl Req for ReqReadWords {
   }
 }
 
-#[test]
-fn test_req_read_words_serialize() {
-  let mut d: ReqReadWords = ReqReadWords {
-    des: Destination::new(),
-    device: DeviceWord::D,
-    head_number: 1,
-    number: 2,
-  };
-
-  print!("ReqReadWords:");
-  for i in d.serialize() {
-    print!(" {:#04X}", i);
-  }
-  println!(" ");
-}
+//#[test]
+//fn test_req_read_words_serialize() {
+//  let mut d: ReqReadWords = ReqReadWords {
+//    des: Destination::new(),
+//    device: DeviceWord::D,
+//    head_number: 1,
+//    number: 2,
+//  };
+//
+//  print!("ReqReadWords:");
+//  for i in d.serialize() {
+//    print!(" {:#04X}", i);
+//  }
+//  println!(" ");
+//}
 
 //批量读响应(字软元件)
 struct ResReadWords {
@@ -163,13 +167,24 @@ struct ResReadWords {
   data: Vec<u16>, //数据
 }
 
+impl ResReadWords {
+  fn new() -> ResReadWords {
+    ResReadWords {
+      des: Destination::new(),
+      end_code: 0,
+      data: Vec::with_capacity(128)
+    }
+  }
+}
+
 impl Res for ResReadWords {
-  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<(), ()> {
+  fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()> {
     if data.len() < 11 {
-      return Err(());
+      return Ok(0);
     }
     //检查副帧头
     if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+//      println!("副帧头 错误");
       return Err(());
     }
     //检查地址
@@ -179,14 +194,20 @@ impl Res for ResReadWords {
     }
     //获取响应数据长
     let l: u16 = u16::from_le_bytes([data[7], data[8]]);
-    if data.len() != (l as usize + 9) || (l % 2 == 1) {//l需为偶数
+    if l % 2 == 1 {//l需为偶数
       return Err(());
     }
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
+    }
+
     //检查结束代码
     self.end_code = u16::from_le_bytes([data[9], data[10]]);
     if self.end_code != 0 {
       self.data.clear();
-      return Ok(());
+      return Ok(len);
     }
     //拷贝数据
     for i in 0..(l / 2 - 1) {
@@ -196,7 +217,7 @@ impl Res for ResReadWords {
       let v = u16::from_le_bytes(ul);
       self.data.push(v);
     }
-    return Ok(());
+    return Ok(len);
   }
 }
 
@@ -224,7 +245,7 @@ struct ResReadRandomWord{
 
 
 //批量写请求(字软元件)
-pub(crate) struct ReqWriteWords{
+struct ReqWriteWords{
   des:Destination,
   device:DeviceWord,
   head_number:u32,
@@ -284,21 +305,21 @@ impl Req for ReqWriteWords {
   }
 }
 
-#[test]
-fn test_req_write_words_serialize() {
-  let mut d: ReqWriteWords = ReqWriteWords {
-    des: Destination::new(),
-    device: DeviceWord::D,
-    head_number: 1,
-    data:vec![1,2],
-  };
-
-  print!("ReqWriteWords:");
-  for i in d.serialize() {
-    print!(" {:#04X}", i);
-  }
-  println!(" ");
-}
+//#[test]
+//fn test_req_write_words_serialize() {
+//  let mut d: ReqWriteWords = ReqWriteWords {
+//    des: Destination::new(),
+//    device: DeviceWord::D,
+//    head_number: 1,
+//    data:vec![1,2],
+//  };
+//
+//  print!("ReqWriteWords:");
+//  for i in d.serialize() {
+//    print!(" {:#04X}", i);
+//  }
+//  println!(" ");
+//}
 
 
 //批量写响应(字软元件)
@@ -308,7 +329,7 @@ struct ResWriteWords {
 }
 
 impl Res for ResWriteWords {
-  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<(), ()> {
+  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<u16, ()> {
     if data.len() < 11 {
       return Err(());
     }
@@ -328,8 +349,58 @@ impl Res for ResWriteWords {
     }
     //检查结束代码
     self.end_code = u16::from_le_bytes([data[9], data[10]]);
-    return Ok(());
+    return Ok(0);
   }
 }
 
 
+
+// 批量读取字软元件(D软元件）
+// 读取成功返回 值数组
+// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub fn read_words(mut stream:&std::net::TcpStream,head_number:u32,number:u16)->Result<Vec<u16>,u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqReadWords::new();
+  let mut res = ResReadWords::new();
+  req.head_number = head_number;
+  req.number = number;
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+
+//  let ten_millis = time::Duration::from_millis(10);
+//  thread::sleep(ten_millis);
+
+  loop {
+    let mut b = [0u8; 128];
+    if let Ok(n) = stream.read(&mut b) {
+      println!("读到 {} 字节",n);
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break;
+          }
+          out = Result::Ok(res.data.clone());
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
+
+// 批量写入字软元件
