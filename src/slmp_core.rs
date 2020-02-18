@@ -2,7 +2,6 @@ use std::net::{IpAddr,Ipv4Addr};
 use std::net::{TcpStream, ToSocketAddrs,Shutdown};
 use std::io::prelude::*;
 use std::{vec, io};
-use std::{thread, time};
 
 //字软元件
 pub(crate) enum DeviceWord {
@@ -27,6 +26,7 @@ pub(crate) trait Req{
 pub(crate) trait Res {
   //反序列化 Deserialization
   //如果报文结构正确，但是还不完整，返回 Ok(0)
+  //如果报文结构正确并完整，返回 OK(l) l：有效报文长度
   fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()>;
 }
 
@@ -194,9 +194,6 @@ impl Res for ResReadWords {
     }
     //获取响应数据长
     let l: u16 = u16::from_le_bytes([data[7], data[8]]);
-    if l % 2 == 1 {//l需为偶数
-      return Err(());
-    }
     //报文长度
     let len: u16 = l + 9;
     if data.len() < (len as usize) {
@@ -250,6 +247,17 @@ struct ReqWriteWords{
   device:DeviceWord,
   head_number:u32,
   data: Vec<u16>,
+}
+
+impl ReqWriteWords{
+  fn new()->ReqWriteWords{
+    ReqWriteWords{
+      des: Destination::new(),
+      device: DeviceWord::D,
+      head_number: 1,
+      data: vec![]
+    }
+  }
 }
 
 impl Req for ReqWriteWords {
@@ -328,10 +336,19 @@ struct ResWriteWords {
   end_code:u16,    //结束代码
 }
 
+impl ResWriteWords{
+  fn new()->ResWriteWords{
+    ResWriteWords{
+      des: Destination::new(),
+      end_code: 0
+    }
+  }
+}
+
 impl Res for ResWriteWords {
   fn deserialization(&mut self, data: &[u8]) -> std::result::Result<u16, ()> {
     if data.len() < 11 {
-      return Err(());
+      return Ok(0);
     }
     //检查副帧头
     if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
@@ -344,12 +361,17 @@ impl Res for ResWriteWords {
     }
     //获取响应数据长
     let l: u16 = u16::from_le_bytes([data[7], data[8]]);
-    if data.len() != 2 {//l需为偶数
-      return Err(());
+
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
     }
+
     //检查结束代码
     self.end_code = u16::from_le_bytes([data[9], data[10]]);
-    return Ok(0);
+
+    return Ok(len);
   }
 }
 
@@ -359,7 +381,7 @@ impl Res for ResWriteWords {
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn read_words(mut stream:&std::net::TcpStream,head_number:u32,number:u16)->Result<Vec<u16>,u16> {
+pub fn read_words(mut stream:&TcpStream,head_number:u32,number:u16)->Result<Vec<u16>,u16> {
   let mut out = Result::Err(0);
   let mut req = ReqReadWords::new();
   let mut res = ResReadWords::new();
@@ -371,13 +393,9 @@ pub fn read_words(mut stream:&std::net::TcpStream,head_number:u32,number:u16)->R
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
-//  let ten_millis = time::Duration::from_millis(10);
-//  thread::sleep(ten_millis);
-
-  loop {
+  'a: loop {
     let mut b = [0u8; 128];
     if let Ok(n) = stream.read(&mut b) {
-      println!("读到 {} 字节",n);
       for i in 0..n {
         buffer.push(b[i]);
       }
@@ -388,9 +406,10 @@ pub fn read_words(mut stream:&std::net::TcpStream,head_number:u32,number:u16)->R
         Ok(n) => { //已解析出完整报文
           if res.end_code != 0 {
             out = Result::Err(res.end_code);
-            break;
+            break 'a;
           }
           out = Result::Ok(res.data.clone());
+          break 'a;
         },
         Err(_) => { //报文结构不正确
           return out;
@@ -403,4 +422,47 @@ pub fn read_words(mut stream:&std::net::TcpStream,head_number:u32,number:u16)->R
   return out;
 }
 
-// 批量写入字软元件
+// 批量写入字软元件 (D软元件）
+// 写入成功返回 Ok
+// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub fn write_words(mut stream:&TcpStream,head_number:u32,data:&[u16])->Result<(),u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqWriteWords::new();
+  let mut res = ResWriteWords::new();
+  req.head_number = head_number;
+  req.data = Vec::from(data);
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+
+  'a: loop {
+    let mut b = [0u8; 128];
+    if let Ok(n) = stream.read(&mut b) {
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break 'a;
+          }
+          out = Result::Ok(());
+          break 'a;
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
