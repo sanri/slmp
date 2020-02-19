@@ -381,7 +381,7 @@ impl Res for ResWriteWords {
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn read_words(mut stream:&TcpStream,head_number:u32,number:u16)->Result<Vec<u16>,u16> {
+pub fn read_words(stream: &mut TcpStream, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
   let mut out = Result::Err(0);
   let mut req = ReqReadWords::new();
   let mut res = ResReadWords::new();
@@ -426,7 +426,7 @@ pub fn read_words(mut stream:&TcpStream,head_number:u32,number:u16)->Result<Vec<
 // 写入成功返回 Ok
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn write_words(mut stream:&TcpStream,head_number:u32,data:&[u16])->Result<(),u16> {
+pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<(),u16> {
   let mut out = Result::Err(0);
   let mut req = ReqWriteWords::new();
   let mut res = ResWriteWords::new();
