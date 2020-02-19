@@ -8,7 +8,6 @@ use std::borrow::BorrowMut;
 
 #[no_mangle]
 extern "C" fn slmp_connect(ip:*const c_char,port:u16) -> *mut TcpStream {
-  println!("slmp_connect");
   let ip_c_str = unsafe {
     assert!(!ip.is_null());
     CStr::from_ptr(ip)
