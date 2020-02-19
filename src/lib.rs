@@ -1,10 +1,9 @@
 mod slmp_core;
 use std::ffi::CStr;
-use std::net::{TcpStream, ToSocketAddrs, Shutdown};
+use std::net::{TcpStream,Shutdown};
 use crate::slmp_core::{read_words, write_words};
 use std::os::raw::c_char;
 use std::ptr::null_mut;
-use std::borrow::BorrowMut;
 
 #[no_mangle]
 extern "C" fn slmp_connect(ip:*const c_char,port:u16) -> *mut TcpStream {

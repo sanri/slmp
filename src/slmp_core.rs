@@ -1,18 +1,19 @@
-use std::net::{IpAddr,Ipv4Addr};
-use std::net::{TcpStream, ToSocketAddrs,Shutdown};
+use std::net::{TcpStream};
 use std::io::prelude::*;
-use std::{vec, io};
+use std::vec;
 
 //字软元件
+#[derive(Clone)]
 pub(crate) enum DeviceWord {
-  D, //数据寄存器 D
+  D = 0xA8, //数据寄存器 D
 }
 
 //位软元件
-pub(crate) enum DeviceBit{
-  X, //输入继电器 X
-  Y, //输出继电器 Y
-  M, //内部继电器 M
+#[derive(Clone)]
+pub(crate) enum DeviceBit {
+  X = 0x9C, //输入继电器 X
+  Y = 0x9D, //输出继电器 Y
+  M = 0x90, //内部继电器 M
 }
 
 
@@ -32,14 +33,6 @@ pub(crate) trait Res {
 
 const REQUSET:[u8;2]=[0x50,0x00];
 const RESPONSE:[u8;2]=[0xD0,0x00];
-
-//软元件代码
-enum DeviceCode{
-  X = 0x9c, //输入继电器 X
-  Y = 0x9d, //输出继电器 Y
-  M = 0x90, //内部继电器 M
-  D = 0xA8, //数据寄存器 D
-}
 
 pub(crate) struct Destination{
   network:u8,           //网络编号
@@ -133,7 +126,7 @@ impl Req for ReqReadWords {
       out.push(h[i]);
     }
     //软元件代码
-    out.push(DeviceCode::D as u8);
+    out.push(self.device.clone() as u8);
     //软元件点数
     let n = self.number.to_le_bytes();
     for i in 0..2 {
@@ -143,22 +136,6 @@ impl Req for ReqReadWords {
     out
   }
 }
-
-//#[test]
-//fn test_req_read_words_serialize() {
-//  let mut d: ReqReadWords = ReqReadWords {
-//    des: Destination::new(),
-//    device: DeviceWord::D,
-//    head_number: 1,
-//    number: 2,
-//  };
-//
-//  print!("ReqReadWords:");
-//  for i in d.serialize() {
-//    print!(" {:#04X}", i);
-//  }
-//  println!(" ");
-//}
 
 //批量读响应(字软元件)
 struct ResReadWords {
@@ -218,29 +195,6 @@ impl Res for ResReadWords {
   }
 }
 
-//批量读请求(位软元件)
-struct ReqReadBit{
-  des:Destination,
-  device:DeviceBit,
-  head_number:u32,
-  number:u16,
-}
-
-//随机读请求(字软元件)
-struct ReqReadRandomWord{
-  des:Destination,
-  device:DeviceWord,
-
-}
-
-//随机读响应(字软元件)
-struct ResReadRandomWord{
-
-}
-
-
-
-
 //批量写请求(字软元件)
 struct ReqWriteWords{
   des:Destination,
@@ -291,7 +245,7 @@ impl Req for ReqWriteWords {
       out.push(h[i]);
     }
     //软元件代码
-    out.push(DeviceCode::D as u8);
+    out.push(self.device.clone() as u8);
     //软元件点数
     let n :[u8;2]= (self.data.len() as u16).to_le_bytes();
     for i in 0..2 {
@@ -312,23 +266,6 @@ impl Req for ReqWriteWords {
     out
   }
 }
-
-//#[test]
-//fn test_req_write_words_serialize() {
-//  let mut d: ReqWriteWords = ReqWriteWords {
-//    des: Destination::new(),
-//    device: DeviceWord::D,
-//    head_number: 1,
-//    data:vec![1,2],
-//  };
-//
-//  print!("ReqWriteWords:");
-//  for i in d.serialize() {
-//    print!(" {:#04X}", i);
-//  }
-//  println!(" ");
-//}
-
 
 //批量写响应(字软元件)
 struct ResWriteWords {
@@ -375,7 +312,135 @@ impl Res for ResWriteWords {
   }
 }
 
+//批量读多个块请求(字软元件)
+//字软元件块数 <= 120 块
+//总字软元件点数 <= 960 点
+struct ReqReadBlockWord{
+  des: Destination,
+  data:Vec<(u32,DeviceWord,u16)>,//字软元件编号，软元件代码，软元件点数
+  //没有实现位软元件
+}
 
+impl ReqReadBlockWord {
+  fn new() -> ReqReadBlockWord {
+    ReqReadBlockWord {
+      des: Destination::new(),
+      data: vec![]
+    }
+  }
+}
+
+impl Req for ReqReadBlockWord {
+  fn serialize(&self) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(128);
+    //副帧头
+    for &i in &REQUSET {
+      out.push(i);
+    }
+    //目标地址
+    let d = self.des.serialize();
+    for &i in &d {
+      out.push(i);
+    }
+    //请求数据长,占位
+    out.push(0x0);
+    out.push(0x0);
+    //保留
+    for i in 0..2 {
+      out.push(0);
+    }
+    //指令
+    out.push(0x06);
+    out.push(0x04);
+    //子指令
+    out.push(0x00);
+    out.push(0x00);
+    //字软元件块数
+    out.push(self.data.len() as u8);
+    //位软元件块数
+    out.push(0x00);
+    //字软元件
+    for (head_number, device, number) in &self.data {
+      //起始软元件编号
+      let h = head_number.to_le_bytes();
+      for i in 0..3 {
+        out.push(h[i]);
+      }
+      //软元件代码
+      out.push(device.clone() as u8);
+      //软元件点数
+      let n = number.to_le_bytes();
+      for i in 0..2 {
+        out.push(n[i]);
+      }
+    }
+    //不实现位软元件
+
+    //修改数据长
+    let l = (out.len() - 9) as u16;
+    let lv = l.to_le_bytes();
+    out[7] = lv[0];
+    out[8] = lv[1];
+
+    return out;
+  }
+}
+
+//批量读多个块响应(字软元件)
+struct ResReadBlockWord{
+  des:Destination,
+  end_code:u16,           //结束代码
+  data:Vec<Vec<u16>>,     //只实现了字软元件
+}
+
+impl ResReadBlockWord {
+  fn new() -> ResReadBlockWord {
+    ResReadBlockWord {
+      des: Destination::new(),
+      end_code: 0,
+      data: vec![],
+    }
+  }
+}
+
+impl Res for ResReadBlockWord {
+  fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()> {
+    if data.len() < 11 {
+      return Ok(0);
+    }
+    //检查副帧头
+    if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+      return Err(());
+    }
+    //检查地址
+    let r = self.des.deserialization(&data[2..=6]);
+    if r == Err(()) {
+      return Err(());
+    }
+    //获取响应数据长
+    let l: u16 = u16::from_le_bytes([data[7], data[8]]);
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
+    }
+    //检查结束代码
+    self.end_code = u16::from_le_bytes([data[9], data[10]]);
+    if self.end_code != 0 {
+      self.data.clear();
+      return Ok(len);
+    }
+    //拷贝数据
+    for i in 0..(l / 2 - 1) {
+      let p1 = 11 + i * 2;
+      let p2 = p1 + 1;
+      let ul: [u8; 2] = [data[p1 as usize], data[p2 as usize]];
+      let v = u16::from_le_bytes(ul);
+      // self.data.push(v);
+    }
+    return Ok(len);
+  }
+}
 
 // 批量读取字软元件(D软元件）
 // 读取成功返回 值数组
@@ -466,3 +531,4 @@ pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<()
   }
   return out;
 }
+
