@@ -453,6 +453,129 @@ impl Res for ResReadBlockWord {
   }
 }
 
+//批量写多个块(字软元件)
+struct ReqWriteBlockWord{
+  des:Destination,
+  data:Vec<(u32,DeviceWord,Vec<u16>)>,//字软元件编号,软元件代码,块数据
+  //位软元件不实现
+}
+
+impl ReqWriteBlockWord {
+  fn new() -> ReqWriteBlockWord {
+    ReqWriteBlockWord {
+      des: Destination::new(),
+      data: vec![]
+    }
+  }
+}
+
+impl Req for ReqWriteBlockWord {
+  fn serialize(&self) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(128);
+    //副帧头
+    for &i in &REQUSET {
+      out.push(i);
+    }
+    //目标地址
+    let des = self.des.serialize();
+    for i in &des {
+      out.push(i.clone());
+    }
+    //请求数据长,先占位
+    out.push(0x0);
+    out.push(0x0);
+    //保留
+    for i in 0..2 {
+      out.push(0);
+    }
+    //指令
+    out.push(0x06);
+    out.push(0x14);
+    //子指令
+    out.push(0x00);
+    out.push(0x00);
+    //字软元件块数
+    out.push(self.data.len() as u8);
+    //位软元件块数
+    out.push(0x00);
+
+    for (head_number, device, d) in &self.data {
+      //起始软元件编号
+      let h = head_number.to_le_bytes();
+      for i in 0..3 {
+        out.push(h[i]);
+      }
+      //软元件代码
+      out.push(*device as u8);
+      //软元件点数
+      let n: [u8; 2] = (d.len() as u16).to_le_bytes();
+      for i in 0..2 {
+        out.push(n[i]);
+      }
+      //数据
+      for v in d {
+        let l = v.to_le_bytes();
+        for i in 0..2 {
+          out.push(l[i]);
+        }
+      }
+    }
+
+    //修改数据长
+    let l = (out.len() - 9) as u16;
+    let lv = l.to_le_bytes();
+    out[7] = lv[0];
+    out[8] = lv[1];
+
+    return out;
+  }
+}
+
+//批量写多个块响应(字软元件)
+struct ResWriteBlockWord{
+  des:Destination,
+  end_code:u16,
+}
+
+impl ResWriteBlockWord {
+  fn new() -> ResWriteBlockWord {
+    ResWriteBlockWord {
+      des: Destination::new(),
+      end_code: 0,
+    }
+  }
+}
+
+impl Res for ResWriteBlockWord {
+  fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()> {
+    if data.len() < 11 {
+      return Ok(0);
+    }
+    //检查副帧头
+    if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+      return Err(());
+    }
+    //检查地址
+    let r = self.des.deserialization(&data[2..=6]);
+    if r == Err(()) {
+      return Err(());
+    }
+    //获取响应数据长
+    let l: u16 = u16::from_le_bytes([data[7], data[8]]);
+
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
+    }
+
+    //检查结束代码
+    self.end_code = u16::from_le_bytes([data[9], data[10]]);
+
+    return Ok(len);
+  }
+}
+
 // 批量读取字软元件(D软元件）
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
