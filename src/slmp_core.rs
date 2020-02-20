@@ -3,13 +3,13 @@ use std::io::prelude::*;
 use std::vec;
 
 //字软元件
-#[derive(Clone)]
+#[derive(Clone,Copy)]
 pub(crate) enum DeviceWord {
   D = 0xA8, //数据寄存器 D
 }
 
 //位软元件
-#[derive(Clone)]
+#[derive(Clone,Copy)]
 pub(crate) enum DeviceBit {
   X = 0x9C, //输入继电器 X
   Y = 0x9D, //输出继电器 Y
@@ -126,7 +126,7 @@ impl Req for ReqReadWords {
       out.push(h[i]);
     }
     //软元件代码
-    out.push(self.device.clone() as u8);
+    out.push(self.device as u8);
     //软元件点数
     let n = self.number.to_le_bytes();
     for i in 0..2 {
@@ -245,7 +245,7 @@ impl Req for ReqWriteWords {
       out.push(h[i]);
     }
     //软元件代码
-    out.push(self.device.clone() as u8);
+    out.push(self.device as u8);
     //软元件点数
     let n :[u8;2]= (self.data.len() as u16).to_le_bytes();
     for i in 0..2 {
@@ -389,6 +389,7 @@ impl Req for ReqReadBlockWord {
 //批量读多个块响应(字软元件)
 struct ResReadBlockWord{
   des:Destination,
+  req_data:Vec<(DeviceWord,u16)>,  //请求数据
   end_code:u16,           //结束代码
   data:Vec<Vec<u16>>,     //只实现了字软元件
 }
@@ -397,6 +398,7 @@ impl ResReadBlockWord {
   fn new() -> ResReadBlockWord {
     ResReadBlockWord {
       des: Destination::new(),
+      req_data: vec![],
       end_code: 0,
       data: vec![],
     }
@@ -431,12 +433,21 @@ impl Res for ResReadBlockWord {
       return Ok(len);
     }
     //拷贝数据
-    for i in 0..(l / 2 - 1) {
-      let p1 = 11 + i * 2;
-      let p2 = p1 + 1;
-      let ul: [u8; 2] = [data[p1 as usize], data[p2 as usize]];
-      let v = u16::from_le_bytes(ul);
-      // self.data.push(v);
+    let mut i = 0;
+    for (device, number) in &self.req_data {
+      let mut block: Vec<u16> = Vec::new();
+      for j in 0..*number {
+        let p1 = 11 + i * 2;
+        let p2 = p1 + 1;
+        i += 1;
+        if p2 >= l {
+          return Err(());
+        }
+        let ul: [u8; 2] = [data[p1 as usize], data[p2 as usize]];
+        let v = u16::from_le_bytes(ul);
+        block.push(v);
+      }
+      self.data.push(block);
     }
     return Ok(len);
   }
@@ -532,3 +543,50 @@ pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<()
   return out;
 }
 
+// 批量读取多个块 (D软元件)
+// 写入成功返回 Ok
+// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,u16)>)->Result<Vec<Vec<u16>>,u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqReadBlockWord::new();
+  let mut res = ResReadBlockWord::new();
+  for (head_number, number) in data {
+    req.data.push((*head_number, DeviceWord::D, *number));
+    res.req_data.push((DeviceWord::D, *number));
+  }
+
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+
+  'a: loop {
+    let mut b = [0u8; 256];
+    if let Ok(n) = stream.read(&mut b) {
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break 'a;
+          }
+          out = Result::Ok(res.data.clone());
+          break 'a;
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
