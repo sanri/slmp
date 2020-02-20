@@ -1,9 +1,26 @@
 mod slmp_core;
 use std::ffi::CStr;
-use std::net::{TcpStream,Shutdown};
+use std::net::{TcpStream, Shutdown, ToSocketAddrs};
 use crate::slmp_core::{read_words, write_words};
 use std::os::raw::c_char;
 use std::ptr::null_mut;
+
+
+struct Slmp{
+  stream:TcpStream,
+}
+
+impl Slmp{
+  fn connect<A:ToSocketAddrs>(addr:A)->Result<Slmp,()>{
+    Err(())
+  }
+
+  fn shutdown(){
+
+  }
+
+}
+
 
 #[no_mangle]
 extern "C" fn slmp_connect(ip:*const c_char,port:u16) -> *mut TcpStream {

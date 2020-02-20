@@ -667,7 +667,7 @@ pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<()
 }
 
 // 批量读取多个块 (D软元件)
-// 写入成功返回 Ok
+// 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
 pub fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,u16)>)->Result<Vec<Vec<u16>>,u16> {
@@ -701,6 +701,52 @@ pub fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,u16)>)->Result<Vec<Vec<u
             break 'a;
           }
           out = Result::Ok(res.data.clone());
+          break 'a;
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
+
+// 批量写多个块 (D软元件)
+// 写入成功返回 Ok
+// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,Vec<u16>)>)->Result<(),u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqWriteBlockWord::new();
+  let mut res = ResWriteBlockWord::new();
+  for (head_number, d) in data {
+    req.data.push((*head_number, DeviceWord::D, d.clone()));
+  }
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+
+  'a: loop {
+    let mut b = [0u8; 256];
+    if let Ok(n) = stream.read(&mut b) {
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break 'a;
+          }
+          out = Result::Ok(());
           break 'a;
         },
         Err(_) => { //报文结构不正确
