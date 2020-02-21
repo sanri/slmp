@@ -13,7 +13,7 @@ pub struct Slmp{
 
 impl Slmp {
   pub fn connect(addr: &SocketAddr) -> Result<Slmp, ()> {
-    if let Ok(stream) = TcpStream::connect_timeout(addr, Duration::new(1, 0)) {
+    if let Ok(stream) = TcpStream::connect_timeout(addr, Duration::new(2, 0)) {
       stream.set_read_timeout(Some(Duration::new(1, 0)));
       stream.set_write_timeout(Some(Duration::new(1, 0)));
       Ok(Slmp { stream: stream })
