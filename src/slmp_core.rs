@@ -440,7 +440,7 @@ impl Res for ResReadBlockWord {
         let p1 = 11 + i * 2;
         let p2 = p1 + 1;
         i += 1;
-        if p2 >= l {
+        if p2 >= len {
           return Err(());
         }
         let ul: [u8; 2] = [data[p1 as usize], data[p2 as usize]];

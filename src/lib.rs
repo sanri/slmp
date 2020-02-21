@@ -22,7 +22,7 @@ impl Slmp {
     }
   }
 
-  pub fn shutdown(&mut self)->Result<(),()> {
+  pub fn shutdown(self)->Result<(),()> {
     if let Ok(_) = self.stream.shutdown(Shutdown::Both) {
       return Ok(());
     } else {
@@ -136,81 +136,65 @@ extern "C" fn slmp_write_words(
   return out;
 }
 
+
 #[test]
-fn test() {
-  println!("test begin");
-  if let Ok(mut stream) = TcpStream::connect("192.168.10.250:2025") {
-    println!("connect ok");
+fn testblocks() {
+  println!("app start");
+  let addr = SocketAddr::from(([192, 168, 10, 250], 2025));
+  match Slmp::connect(&addr) {
+    Ok(mut slmp) => {
+      println!("connect successful");
 
-    print!("read 1: ");
-    let r = read_words(&mut stream,1,2);
-    match r{
-      Ok(d)=>{
-        for v in d{
-          print!("{}, ",v);
+      let r = slmp.read_blocks(&vec![(1, 10), (11, 10)]);
+      match r {
+        Ok(vlist) => {
+          print!("read blocks ok. [ ");
+          for vup in vlist {
+            print!("[ ");
+            for v in vup {
+              print!("{}, ", v);
+            }
+            print!("], ");
+          }
+          println!("]");
         }
-        println!(" ");
-      },
-      Err(v)=>{
-        println!("通信错误，错误码 = {}",v);
-      }
-    }
-
-    print!("write 1: ");
-    let r = write_words(&mut stream,1,&[1,2]);
-    match r{
-      Ok(_)=>{
-        println!("写入成功");
-      },
-      Err(v)=>{
-        println!("通信错误，错误码 = {}",v);
-      }
-    }
-
-    print!("read 2: ");
-    let r = read_words(&mut stream,1,2);
-    match r{
-      Ok(d)=>{
-        for v in d{
-          print!("{}, ",v);
+        Err(code) => {
+          println!("read blocks err code = {}", code);
         }
-        println!(" ");
-      },
-      Err(v)=>{
-        println!("通信错误，错误码 = {}",v);
       }
-    }
 
-    print!("write 2: ");
-    let r = write_words(&mut stream,1,&[100,9]);
-    match r{
-      Ok(_)=>{
-        println!("写入成功");
-      },
-      Err(v)=>{
-        println!("通信错误，错误码 = {}",v);
+      if let Err(code) = slmp.write_blocks(&vec![(1, vec![1, 1])]){
+        println!("write blocks err code = {}",code);
+      }else {
+        println!("write blocks ok");
       }
-    }
 
-    print!("read 3: ");
-    let r = read_words(&mut stream,1,2);
-    match r{
-      Ok(d)=>{
-        for v in d{
-          print!("{}, ",v);
+      let r = slmp.read_blocks(&vec![(1, 10), (11, 10)]);
+      match r {
+        Ok(vlist) => {
+          print!("read blocks ok. [ ");
+          for vup in vlist {
+            print!("[ ");
+            for v in vup {
+              print!("{}, ", v);
+            }
+            print!("], ");
+          }
+          println!("]");
         }
-        println!(" ");
-      },
-      Err(v)=>{
-        println!("通信错误，错误码 = {}",v);
+        Err(code) => {
+          println!("read blocks err code = {}", code);
+        }
       }
-    }
 
-    stream.shutdown(std::net::Shutdown::Both);
-    println!("connect shutdown");
-  } else {
-    println!("connect error");
-    return;
+
+      slmp.shutdown();
+      println!("connect shutdown");
+    }
+    Err(..) => {
+      println!("connect fault");
+    }
   }
-
 }
+
+
