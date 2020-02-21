@@ -1,24 +1,66 @@
 mod slmp_core;
 use std::ffi::CStr;
-use std::net::{TcpStream, Shutdown, ToSocketAddrs};
-use crate::slmp_core::{read_words, write_words};
+use std::net::{TcpStream, Shutdown, ToSocketAddrs, SocketAddr};
+use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks};
 use std::os::raw::c_char;
 use std::ptr::null_mut;
+use std::time::Duration;
 
 
-struct Slmp{
+pub struct Slmp{
   stream:TcpStream,
 }
 
-impl Slmp{
-  fn connect<A:ToSocketAddrs>(addr:A)->Result<Slmp,()>{
-    Err(())
+impl Slmp {
+  pub fn connect(addr: &SocketAddr) -> Result<Slmp, ()> {
+    if let Ok(stream) = TcpStream::connect_timeout(addr, Duration::new(1, 0)) {
+      stream.set_read_timeout(Some(Duration::new(1, 0)));
+      stream.set_write_timeout(Some(Duration::new(1, 0)));
+      Ok(Slmp { stream: stream })
+    } else {
+      Err(())
+    }
   }
 
-  fn shutdown(){
-
+  pub fn shutdown(&mut self)->Result<(),()> {
+    if let Ok(_) = self.stream.shutdown(Shutdown::Both) {
+      return Ok(());
+    } else {
+      return Err(());
+    }
   }
 
+  // 批量读取字软元件(D软元件）
+  // 读取成功返回 值数组
+  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn read_words(&mut self, head_number: u32, number: u16) -> Result<Vec<u16>, u16> {
+    return read_words(&mut (self.stream), head_number, number)
+  }
+
+  // 批量写入字软元件 (D软元件）
+  // 写入成功返回 Ok
+  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn write_words(&mut self, head_number: u32, data: &[u16]) -> Result<(), u16> {
+    return write_words(&mut (self.stream), head_number, data);
+  }
+
+  // 批量读取多个块 (D软元件)
+  // 读取成功返回 值数组
+  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn read_blocks(&mut self, data: &Vec<(u32, u16)>) -> Result<Vec<Vec<u16>>, u16> {
+    return read_blocks(&mut (self.stream), data);
+  }
+
+  // 批量写多个块 (D软元件)
+  // 写入成功返回 Ok
+  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn write_blocks(&mut self, data: &Vec<(u32, Vec<u16>)>) -> Result<(), u16> {
+    return write_blocks(&mut(self.stream), data);
+  }
 }
 
 
@@ -30,6 +72,8 @@ extern "C" fn slmp_connect(ip:*const c_char,port:u16) -> *mut TcpStream {
   };
   let ip_r_str = ip_c_str.to_str().unwrap();
   if let Ok(mut stream) = TcpStream::connect((ip_r_str, port)) {
+    stream.set_read_timeout(Some(Duration::new(1, 0)));
+    stream.set_write_timeout(Some(Duration::new(1, 0)));
     return Box::into_raw(Box::new(stream));
   } else {
     return null_mut();
