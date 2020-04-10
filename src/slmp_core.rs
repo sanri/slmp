@@ -6,6 +6,7 @@ use std::vec;
 #[derive(Clone,Copy)]
 pub(crate) enum DeviceWord {
   D = 0xA8, //数据寄存器 D
+  R = 0xAF, //文件寄存器 R
 }
 
 //位软元件
@@ -85,10 +86,10 @@ struct ReqReadWords{
 }
 
 impl ReqReadWords {
-  fn new() -> ReqReadWords {
+  fn new(dev: DeviceWord) -> ReqReadWords {
     ReqReadWords {
       des: Destination::new(),
-      device: DeviceWord::D,
+      device: dev,
       head_number: 1,
       number: 1
     }
@@ -203,11 +204,11 @@ struct ReqWriteWords{
   data: Vec<u16>,
 }
 
-impl ReqWriteWords{
-  fn new()->ReqWriteWords{
-    ReqWriteWords{
+impl ReqWriteWords {
+  fn new(dev: DeviceWord) -> ReqWriteWords {
+    ReqWriteWords {
       des: Destination::new(),
-      device: DeviceWord::D,
+      device: dev,
       head_number: 1,
       data: vec![]
     }
@@ -576,13 +577,13 @@ impl Res for ResWriteBlockWord {
   }
 }
 
-// 批量读取字软元件(D软元件）
+// 批量读取字软元件
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn read_words(stream: &mut TcpStream, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
+pub fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
   let mut out = Result::Err(0);
-  let mut req = ReqReadWords::new();
+  let mut req = ReqReadWords::new(dev);
   let mut res = ResReadWords::new();
   req.head_number = head_number;
   req.number = number;
