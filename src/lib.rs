@@ -1,10 +1,12 @@
-mod slmp_core;
 use std::ffi::CStr;
 use std::net::{TcpStream, Shutdown, ToSocketAddrs, SocketAddr};
-use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks};
 use std::os::raw::c_char;
 use std::ptr::null_mut;
 use std::time::Duration;
+
+mod slmp_core;
+use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks, DeviceWord};
+
 
 
 pub struct Slmp{
@@ -22,7 +24,7 @@ impl Slmp {
     }
   }
 
-  pub fn shutdown(self)->Result<(),()> {
+  pub fn shutdown(self) -> Result<(), ()> {
     if let Ok(_) = self.stream.shutdown(Shutdown::Both) {
       return Ok(());
     } else {
@@ -30,36 +32,36 @@ impl Slmp {
     }
   }
 
-  // 批量读取字软元件(D软元件）
+  // 批量读取字软元件
   // 读取成功返回 值数组
   // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
   // 其它错误都返回 Err(0)
-  pub fn read_words(&mut self, head_number: u32, number: u16) -> Result<Vec<u16>, u16> {
-    return read_words(&mut (self.stream), head_number, number)
+  pub fn read_words(&mut self, head_number: u32, dev:DeviceWord, number: u16) -> Result<Vec<u16>, u16> {
+    return read_words(&mut self.stream, dev, head_number, number)
   }
 
-  // 批量写入字软元件 (D软元件）
+  // 批量写入字软元件
   // 写入成功返回 Ok
   // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
   // 其它错误都返回 Err(0)
-  pub fn write_words(&mut self, head_number: u32, data: &[u16]) -> Result<(), u16> {
-    return write_words(&mut (self.stream), head_number, data);
+  pub fn write_words(&mut self, head_number: u32, dev: DeviceWord, data: &[u16]) -> Result<(), u16> {
+    return write_words(&mut self.stream, dev, head_number, data)
   }
 
-  // 批量读取多个块 (D软元件)
+  // 批量读取多个块
   // 读取成功返回 值数组
   // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
   // 其它错误都返回 Err(0)
-  pub fn read_blocks(&mut self, data: &Vec<(u32, u16)>) -> Result<Vec<Vec<u16>>, u16> {
-    return read_blocks(&mut (self.stream), data);
+  pub fn read_blocks(&mut self, data: &Vec<(u32, DeviceWord, u16)>) -> Result<Vec<Vec<u16>>, u16> {
+    return read_blocks(&mut self.stream, data);
   }
 
   // 批量写多个块 (D软元件)
   // 写入成功返回 Ok
   // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
   // 其它错误都返回 Err(0)
-  pub fn write_blocks(&mut self, data: &Vec<(u32, Vec<u16>)>) -> Result<(), u16> {
-    return write_blocks(&mut(self.stream), data);
+  pub fn write_blocks(&mut self, data: &Vec<(u32, DeviceWord, Vec<u16>)>) -> Result<(), u16> {
+    return write_blocks(&mut self.stream, data);
   }
 }
 
@@ -91,12 +93,20 @@ extern "C" fn slmp_shutdown(s:*mut TcpStream) {
 
 #[no_mangle]
 extern "C" fn slmp_read_words(
-  stream: &mut TcpStream, head_number:u32, number:u16, data: *mut u16) ->i32 {
+  //dev
+  // 1 保持寄存器 D
+  // 2 文件寄存器 R
+  stream: &mut TcpStream, head_number:u32,dev:u16, number:u16, data: *mut u16) ->i32 {
   if data.is_null() {
     return -1;
   }
   let mut out: i32 = 0;
-  let r = read_words(stream, head_number, number);
+  let device = match dev {
+    1 => DeviceWord::D,
+    2 => DeviceWord::R,
+    _ => DeviceWord::D,
+  };
+  let r = read_words(stream, device, head_number, number);
   match r {
     Ok(r) => {
       for i in 0..number {
@@ -115,7 +125,7 @@ extern "C" fn slmp_read_words(
 
 #[no_mangle]
 extern "C" fn slmp_write_words(
-  stream:&mut TcpStream, head_number:u32,number:u16,data:*const u16) ->i32 {
+  stream:&mut TcpStream, head_number:u32,dev:u16,number:u16,data:*const u16) ->i32 {
   if data.is_null() {
     return -1;
   }
@@ -127,7 +137,12 @@ extern "C" fn slmp_write_words(
       d.push(*p);
     }
   }
-  let r = write_words(stream, head_number, &d);
+  let device = match dev {
+    1 => DeviceWord::D,
+    2 => DeviceWord::R,
+    _ => DeviceWord::D,
+  };
+  let r = write_words(stream, device, head_number, &d);
   match r {
     Ok(_) => { out = 0 },
     Err(0) => { return -1 },
@@ -145,7 +160,7 @@ fn testblocks() {
     Ok(mut slmp) => {
       println!("connect successful");
 
-      let r = slmp.read_blocks(&vec![(1, 10), (11, 10)]);
+      let r = slmp.read_blocks(&vec![(1, DeviceWord::D, 10), (11, DeviceWord::D, 10)]);
       match r {
         Ok(vlist) => {
           print!("read blocks ok. [ ");
@@ -163,13 +178,13 @@ fn testblocks() {
         }
       }
 
-      if let Err(code) = slmp.write_blocks(&vec![(1, vec![1, 1])]){
-        println!("write blocks err code = {}",code);
-      }else {
+      if let Err(code) = slmp.write_blocks(&vec![(1, DeviceWord::D, vec![1, 1])]) {
+        println!("write blocks err code = {}", code);
+      } else {
         println!("write blocks ok");
       }
 
-      let r = slmp.read_blocks(&vec![(1, 10), (11, 10)]);
+      let r = slmp.read_blocks(&vec![(1, DeviceWord::D, 10), (11, DeviceWord::D, 10)]);
       match r {
         Ok(vlist) => {
           print!("read blocks ok. [ ");

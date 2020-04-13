@@ -4,14 +4,14 @@ use std::vec;
 
 //字软元件
 #[derive(Clone,Copy)]
-pub(crate) enum DeviceWord {
+pub enum DeviceWord {
   D = 0xA8, //数据寄存器 D
   R = 0xAF, //文件寄存器 R
 }
 
 //位软元件
 #[derive(Clone,Copy)]
-pub(crate) enum DeviceBit {
+pub enum DeviceBit {
   X = 0x9C, //输入继电器 X
   Y = 0x9D, //输出继电器 Y
   M = 0x90, //内部继电器 M
@@ -581,7 +581,7 @@ impl Res for ResWriteBlockWord {
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
+pub(crate) fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
   let mut out = Result::Err(0);
   let mut req = ReqReadWords::new(dev);
   let mut res = ResReadWords::new();
@@ -622,13 +622,13 @@ pub fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32, number
   return out;
 }
 
-// 批量写入字软元件 (D软元件）
+// 批量写入字软元件
 // 写入成功返回 Ok
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<(),u16> {
+pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,data:&[u16])->Result<(),u16> {
   let mut out = Result::Err(0);
-  let mut req = ReqWriteWords::new();
+  let mut req = ReqWriteWords::new(dev);
   let mut res = ResWriteWords::new();
   req.head_number = head_number;
   req.data = Vec::from(data);
@@ -667,17 +667,17 @@ pub fn write_words(stream:&mut TcpStream,head_number:u32,data:&[u16])->Result<()
   return out;
 }
 
-// 批量读取多个块 (D软元件)
+// 批量读取多个块
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,u16)>)->Result<Vec<Vec<u16>>,u16> {
+pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)->Result<Vec<Vec<u16>>,u16> {
   let mut out = Result::Err(0);
   let mut req = ReqReadBlockWord::new();
   let mut res = ResReadBlockWord::new();
-  for (head_number, number) in data {
-    req.data.push((*head_number, DeviceWord::D, *number));
-    res.req_data.push((DeviceWord::D, *number));
+  for (head_number,dev, number) in data {
+    req.data.push((*head_number, *dev, *number));
+    res.req_data.push((*dev, *number));
   }
 
   let msg: Vec<u8> = req.serialize();
@@ -719,12 +719,12 @@ pub fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,u16)>)->Result<Vec<Vec<u
 // 写入成功返回 Ok
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
-pub fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,Vec<u16>)>)->Result<(),u16> {
+pub(crate) fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,Vec<u16>)>)->Result<(),u16> {
   let mut out = Result::Err(0);
   let mut req = ReqWriteBlockWord::new();
   let mut res = ResWriteBlockWord::new();
-  for (head_number, d) in data {
-    req.data.push((*head_number, DeviceWord::D, d.clone()));
+  for (head_number, dev, d) in data {
+    req.data.push((*head_number, *dev, d.clone()));
   }
   let msg: Vec<u8> = req.serialize();
   if let Err(_) = stream.write_all(&msg) {
