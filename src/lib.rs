@@ -5,8 +5,8 @@ use std::ptr::null_mut;
 use std::time::Duration;
 
 mod slmp_core;
-use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks, DeviceWord};
-
+use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks};
+pub use crate::slmp_core::{DeviceBit,DeviceWord};
 
 
 pub struct Slmp{

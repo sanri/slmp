@@ -5,8 +5,9 @@ use std::vec;
 //字软元件
 #[derive(Clone,Copy)]
 pub enum DeviceWord {
-  D = 0xA8, //数据寄存器 D
-  R = 0xAF, //文件寄存器 R
+  D = 0xA8,   //数据寄存器 D
+  R = 0xAF,   //文件寄存器 R
+  ZR = 0xB0,  //文件寄存器 ZR
 }
 
 //位软元件
@@ -667,7 +668,7 @@ pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,
   return out;
 }
 
-// 批量读取多个块
+// 批量读取多个块 (字软元件）
 // 读取成功返回 值数组
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
@@ -715,7 +716,7 @@ pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)
   return out;
 }
 
-// 批量写多个块 (D软元件)
+// 批量写多个块 (字软元件)
 // 写入成功返回 Ok
 // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
 // 其它错误都返回 Err(0)
