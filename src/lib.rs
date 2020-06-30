@@ -154,8 +154,7 @@ extern "C" fn slmp_write_words(
 
 #[test]
 fn testblocks() {
-  println!("app start");
-  let addr = SocketAddr::from(([192, 168, 10, 250], 2025));
+  let addr = SocketAddr::from(([192, 168, 0, 10], 5000));
   match Slmp::connect(&addr) {
     Ok(mut slmp) => {
       println!("connect successful");
@@ -203,6 +202,43 @@ fn testblocks() {
       }
 
 
+      slmp.shutdown();
+      println!("connect shutdown");
+    }
+    Err(..) => {
+      println!("connect fault");
+    }
+  }
+}
+
+
+#[test]
+fn testwords() {
+  let addr = SocketAddr::from(([192, 168, 0, 10], 5000));
+  match Slmp::connect(&addr) {
+    Ok(mut slmp) => {
+      println!("connect successful");
+      
+      let r = slmp.read_words(1,DeviceWord::D,10);
+      match r {
+        Ok(vlist) => {
+          print!("read words ok. [ ");
+          for v in vlist {
+            print!("{},",v)
+          }
+          println!("]");
+        }
+        Err(code) => {
+          println!("read words err code = {}", code);
+        }
+      }
+      
+      if let Err(code) = slmp.write_words(1,DeviceWord::D,vec![1u16,2u16,3u16,4u16,5u16,6u16,7u16,8u16,9u16,10u16].as_slice()){
+        println!("write words err code = {}", code);
+      } else {
+        println!("write words ok");
+      }
+      
       slmp.shutdown();
       println!("connect shutdown");
     }

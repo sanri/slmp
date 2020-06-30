@@ -20,7 +20,7 @@ typedef void* Slmp;
 //连接失败返回 null
 API_PREFIX Slmp slmp_connect(const char* ip,uint16_t port);
 
-//此函数在断开连接后，还会释放内部资源。
+//调用此函数断开连接后，还会释放内部资源。
 //所以重复调用此函数会使程序崩溃
 API_PREFIX void slmp_shutdown(Slmp slmp);
 
