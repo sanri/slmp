@@ -578,9 +578,260 @@ impl Res for ResWriteBlockWord {
   }
 }
 
+//批量读请求(位软元件)
+struct ReqReadBits{
+  des:Destination,
+  device:DeviceBit,   //位元件类型
+  head_number:u32,    //元件编号
+  number:u16,         //元件数量
+}
+
+impl ReqReadBits {
+  fn new(dev: DeviceBit) -> ReqReadBits {
+    ReqReadBits {
+      des: Destination::new(),
+      device: dev,
+      head_number: 1,
+      number: 1
+    }
+  }
+}
+
+impl Req for ReqReadBits {
+  fn serialize(&self) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(30);
+    //副帧头
+    for &i in &REQUSET {
+      out.push(i);
+    }
+    //目标地址
+    let d = self.des.serialize();
+    for &i in &d {
+      out.push(i);
+    }
+    //请求数据长
+    out.push(0x0c);
+    out.push(0x0);
+    //保留
+    for i in 0..2 {
+      out.push(0);
+    }
+    //指令
+    out.push(0x01);
+    out.push(0x04);
+    //子指令
+    out.push(0x01);
+    out.push(0x00);
+    //起始软元件编号
+    let h = self.head_number.to_le_bytes();
+    for i in 0..3 {
+      out.push(h[i]);
+    }
+    //软元件代码
+    out.push(self.device as u8);
+    //软元件点数
+    let n = self.number.to_le_bytes();
+    for i in 0..2 {
+      out.push(n[i]);
+    }
+    
+    out
+  }
+}
+
+//批量读响应(位软元件)
+struct ResReadBits {
+  des: Destination,
+  end_code:u16,   //结束代码
+  data: Vec<bool>, //数据
+}
+
+impl ResReadBits {
+  fn new() -> ResReadBits {
+    ResReadBits {
+      des: Destination::new(),
+      end_code: 0,
+      data: Vec::with_capacity(128)
+    }
+  }
+}
+
+impl Res for ResReadBits {
+  fn deserialization(&mut self, data: &[u8]) -> Result<u16, ()> {
+    if data.len() < 11 {
+      return Ok(0);
+    }
+    //检查副帧头
+    if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+//      println!("副帧头 错误");
+      return Err(());
+    }
+    //检查地址
+    let r = self.des.deserialization(&data[2..=6]);
+    if r == Err(()) {
+      return Err(());
+    }
+    //获取响应数据长
+    let l: u16 = u16::from_le_bytes([data[7], data[8]]);
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
+    }
+    
+    //检查结束代码
+    self.end_code = u16::from_le_bytes([data[9], data[10]]);
+    if self.end_code != 0 {
+      self.data.clear();
+      return Ok(len);
+    }
+    
+    //拷贝数据
+    for i in 0..(l - 2) {
+      let u = data[(i + 11) as usize];
+      let b = (u & 0xf0) != 0;
+      self.data.push(b);
+      let b = (u & 0x0f) != 0;
+      self.data.push(b);
+    }
+    return Ok(len);
+  }
+}
+
+//批量写请求(位软元件)
+struct ReqWriteBits {
+  des: Destination,
+  device: DeviceBit,
+  head_number: u32,
+  data: Vec<bool>,
+}
+
+impl ReqWriteBits {
+  fn new(dev: DeviceBit) -> ReqWriteBits {
+    ReqWriteBits {
+      des: Destination::new(),
+      device: dev,
+      head_number: 1,
+      data: vec![]
+    }
+  }
+}
+
+impl Req for ReqWriteBits {
+  fn serialize(&self) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(32);
+    //副帧头
+    for &i in &REQUSET {
+      out.push(i);
+    }
+    //目标地址
+    let des = self.des.serialize();
+    for i in &des {
+      out.push(i.clone());
+    }
+    //请求数据长,先占位
+    out.push(0x0);
+    out.push(0x0);
+    //保留
+    for i in 0..2 {
+      out.push(0);
+    }
+    //指令
+    out.push(0x01);
+    out.push(0x14);
+    //子指令
+    out.push(0x01);
+    out.push(0x00);
+    //起始软元件编号
+    let h = self.head_number.to_le_bytes();
+    for i in 0..3 {
+      out.push(h[i]);
+    }
+    //软元件代码
+    out.push(self.device as u8);
+    //软元件点数
+    let n: [u8; 2] = (self.data.len() as u16).to_le_bytes();
+    for i in 0..2 {
+      out.push(n[i]);
+    }
+    
+    //数据
+    for i in 0..(self.data.len() / 2) {
+      let mut u = 0u8;
+      if self.data[i * 2] {
+        u = u | 0x10;
+      }
+      if self.data[i * 2 + 1] {
+        u = u | 0x01;
+      }
+      out.push(u);
+    }
+    if self.data.len() % 2 == 1 {
+      let mut u = 0u8;
+      if *self.data.last().unwrap() {
+        u = u | 0x10;
+      }
+      out.push(u);
+    }
+    
+    //修改数据长
+    let l = (out.len() - 9) as u16;
+    let lv = l.to_le_bytes();
+    out[7] = lv[0];
+    out[8] = lv[1];
+    out
+  }
+}
+
+//批量写响应(位软元件)
+struct ResWriteBits {
+  des: Destination,
+  end_code:u16,    //结束代码
+}
+
+impl ResWriteBits{
+  fn new()->ResWriteBits{
+    ResWriteBits{
+      des: Destination::new(),
+      end_code: 0
+    }
+  }
+}
+
+impl Res for ResWriteBits {
+  fn deserialization(&mut self, data: &[u8]) -> std::result::Result<u16, ()> {
+    if data.len() < 11 {
+      return Ok(0);
+    }
+    //检查副帧头
+    if data[0] != RESPONSE[0] || data[1] != RESPONSE[1] {
+      return Err(());
+    }
+    //检查地址
+    let r = self.des.deserialization(&data[2..=6]);
+    if r == Err(()) {
+      return Err(());
+    }
+    //获取响应数据长
+    let l: u16 = u16::from_le_bytes([data[7], data[8]]);
+    
+    //报文长度
+    let len: u16 = l + 9;
+    if data.len() < (len as usize) {
+      return Ok(0);
+    }
+    
+    //检查结束代码
+    self.end_code = u16::from_le_bytes([data[9], data[10]]);
+    
+    return Ok(len);
+  }
+}
+
+
 // 批量读取字软元件
 // 读取成功返回 值数组
-// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
 // 其它错误都返回 Err(0)
 pub(crate) fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32, number:u16) ->Result<Vec<u16>,u16> {
   let mut out = Result::Err(0);
@@ -623,9 +874,58 @@ pub(crate) fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32,
   return out;
 }
 
+// 批量读取位软元件
+// 读取成功返回 值数组
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub(crate) fn read_bits(stream: &mut TcpStream,dev:DeviceBit, head_number:u32, number:u16) ->Result<Vec<bool>,u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqReadBits::new(dev);
+  let mut res = ResReadBits::new();
+  req.head_number = head_number;
+  req.number = number;
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+  
+  'a: loop {
+    let mut b = [0u8; 128];
+    if let Ok(n) = stream.read(&mut b) {
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break 'a;
+          }
+          if (number % 2) == 1 {
+            //若读取数量为奇数,则最后一个bool值多余
+            res.data.pop();
+          }
+          out = Result::Ok(res.data.clone());
+          break 'a;
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
+
 // 批量写入字软元件
 // 写入成功返回 Ok
-// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
 // 其它错误都返回 Err(0)
 pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,data:&[u16])->Result<(),u16> {
   let mut out = Result::Err(0);
@@ -670,7 +970,7 @@ pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,
 
 // 批量读取多个块 (字软元件）
 // 读取成功返回 值数组
-// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
 // 其它错误都返回 Err(0)
 pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)->Result<Vec<Vec<u16>>,u16> {
   let mut out = Result::Err(0);
@@ -718,7 +1018,7 @@ pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)
 
 // 批量写多个块 (字软元件)
 // 写入成功返回 Ok
-// 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
 // 其它错误都返回 Err(0)
 pub(crate) fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,Vec<u16>)>)->Result<(),u16> {
   let mut out = Result::Err(0);
