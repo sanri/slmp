@@ -247,7 +247,7 @@ fn testblocks() {
   match Slmp::connect(&addr) {
     Ok(mut slmp) => {
       println!("connect successful");
-
+      
       let r = slmp.read_blocks(&vec![(1, DeviceWord::D, 10), (11, DeviceWord::D, 10)]);
       match r {
         Ok(vlist) => {
@@ -265,13 +265,13 @@ fn testblocks() {
           println!("read blocks err code = {}", code);
         }
       }
-
+      
       if let Err(code) = slmp.write_blocks(&vec![(1, DeviceWord::D, vec![1, 1])]) {
         println!("write blocks err code = {}", code);
       } else {
         println!("write blocks ok");
       }
-
+      
       let r = slmp.read_blocks(&vec![(1, DeviceWord::D, 10), (11, DeviceWord::D, 10)]);
       match r {
         Ok(vlist) => {
@@ -289,8 +289,8 @@ fn testblocks() {
           println!("read blocks err code = {}", code);
         }
       }
-
-
+      
+      
       slmp.shutdown();
       println!("connect shutdown");
     }
@@ -308,12 +308,12 @@ fn testwords() {
     Ok(mut slmp) => {
       println!("connect successful");
       
-      let r = slmp.read_words(1,DeviceWord::D,10);
+      let r = slmp.read_words(1, DeviceWord::D, 10);
       match r {
         Ok(vlist) => {
           print!("read words ok. [ ");
           for v in vlist {
-            print!("{},",v)
+            print!("{},", v)
           }
           println!("]");
         }
@@ -322,7 +322,7 @@ fn testwords() {
         }
       }
       
-      if let Err(code) = slmp.write_words(1,DeviceWord::D,vec![1u16,2u16,3u16,4u16,5u16,6u16,7u16,8u16,9u16,10u16].as_slice()){
+      if let Err(code) = slmp.write_words(1, DeviceWord::D, vec![1u16, 2u16, 3u16, 4u16, 5u16, 6u16, 7u16, 8u16, 9u16, 10u16].as_slice()) {
         println!("write words err code = {}", code);
       } else {
         println!("write words ok");
@@ -338,3 +338,38 @@ fn testwords() {
 }
 
 
+#[test]
+fn testbits() {
+  let addr = SocketAddr::from(([192, 168, 0, 10], 5000));
+  match Slmp::connect(&addr) {
+    Ok(mut slmp) => {
+      println!("connect successful");
+      
+      let r = slmp.read_bits(1, DeviceBit::M, 10);
+      match r {
+        Ok(vlist) => {
+          print!("read bits ok. [ ");
+          for v in vlist {
+            print!("{},", v)
+          }
+          println!("]");
+        }
+        Err(code) => {
+          println!("read bits err code = {}", code);
+        }
+      }
+      
+      if let Err(code) = slmp.write_bits(1, DeviceBit::M, vec![true, false, true, true, false, true, true, true].as_slice()) {
+        println!("write bits err code = {}", code);
+      } else {
+        println!("write bits ok");
+      }
+      
+      slmp.shutdown();
+      println!("connect shutdown");
+    }
+    Err(..) => {
+      println!("connect fault");
+    }
+  }
+}
