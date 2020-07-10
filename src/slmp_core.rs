@@ -968,6 +968,51 @@ pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,
   return out;
 }
 
+// 批量写入位软元件
+// 写入成功返回 Ok
+// 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
+// 其它错误都返回 Err(0)
+pub(crate) fn write_bits(stream:&mut TcpStream,dev:DeviceBit, head_number:u32,data:&[bool])->Result<(),u16> {
+  let mut out = Result::Err(0);
+  let mut req = ReqWriteBits::new(dev);
+  let mut res = ResWriteBits::new();
+  req.head_number = head_number;
+  req.data = Vec::from(data);
+  let msg: Vec<u8> = req.serialize();
+  if let Err(_) = stream.write_all(&msg) {
+    return out
+  }
+  let mut buffer: Vec<u8> = Vec::with_capacity(128);
+  
+  'a: loop {
+    let mut b = [0u8; 128];
+    if let Ok(n) = stream.read(&mut b) {
+      for i in 0..n {
+        buffer.push(b[i]);
+      }
+      match res.deserialization(&buffer) {
+        Ok(0) => { //报文不完整
+          continue;
+        },
+        Ok(n) => { //已解析出完整报文
+          if res.end_code != 0 {
+            out = Result::Err(res.end_code);
+            break 'a;
+          }
+          out = Result::Ok(());
+          break 'a;
+        },
+        Err(_) => { //报文结构不正确
+          return out;
+        }
+      }
+    } else {
+      return out
+    }
+  }
+  return out;
+}
+
 // 批量读取多个块 (字软元件）
 // 读取成功返回 值数组
 // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)

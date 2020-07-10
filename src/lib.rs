@@ -1,11 +1,11 @@
 use std::ffi::CStr;
 use std::net::{TcpStream, Shutdown, ToSocketAddrs, SocketAddr};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int, c_uint, c_short, c_ushort, c_uchar};
 use std::ptr::null_mut;
 use std::time::Duration;
 
 mod slmp_core;
-use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks};
+use crate::slmp_core::{read_words, write_words, read_blocks, write_blocks,read_bits,write_bits};
 pub use crate::slmp_core::{DeviceBit,DeviceWord};
 
 
@@ -23,7 +23,7 @@ impl Slmp {
       Err(())
     }
   }
-
+  
   pub fn shutdown(self) -> Result<(), ()> {
     if let Ok(_) = self.stream.shutdown(Shutdown::Both) {
       return Ok(());
@@ -31,40 +31,55 @@ impl Slmp {
       return Err(());
     }
   }
-
+  
   // 批量读取字软元件
   // 读取成功返回 值数组
-  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
   // 其它错误都返回 Err(0)
-  pub fn read_words(&mut self, head_number: u32, dev:DeviceWord, number: u16) -> Result<Vec<u16>, u16> {
-    return read_words(&mut self.stream, dev, head_number, number)
+  pub fn read_words(&mut self, head_number: u32, dev: DeviceWord, number: u16) -> Result<Vec<u16>, u16> {
+    return read_words(&mut self.stream, dev, head_number, number);
   }
-
+  
+  // 批量读取位软元件
+  // 读取成功返回 值数组
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn read_bits(&mut self, head_number: u32, dev: DeviceBit, number: u16) -> Result<Vec<bool>, u16> {
+    return read_bits(&mut self.stream, dev, head_number, number);
+  }
+  
   // 批量写入字软元件
   // 写入成功返回 Ok
-  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
   // 其它错误都返回 Err(0)
   pub fn write_words(&mut self, head_number: u32, dev: DeviceWord, data: &[u16]) -> Result<(), u16> {
-    return write_words(&mut self.stream, dev, head_number, data)
+    return write_words(&mut self.stream, dev, head_number, data);
   }
-
+  
+  // 批量写入位软元件
+  // 写入成功返回 Ok
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
+  // 其它错误都返回 Err(0)
+  pub fn write_bits(&mut self, head_number: u32, dev: DeviceBit, data: &[bool]) -> Result<(), u16> {
+    return write_bits(&mut self.stream, dev, head_number, data);
+  }
+  
   // 批量读取多个块
   // 读取成功返回 值数组
-  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
   // 其它错误都返回 Err(0)
   pub fn read_blocks(&mut self, data: &Vec<(u32, DeviceWord, u16)>) -> Result<Vec<Vec<u16>>, u16> {
     return read_blocks(&mut self.stream, data);
   }
-
+  
   // 批量写多个块 (D软元件)
   // 写入成功返回 Ok
-  // 通信正常，lsmp协议返回的结束代码非零时，返回 Err(end_code)
+  // 通信正常,slmp协议返回的结束代码非零时,返回 Err(end_code)
   // 其它错误都返回 Err(0)
   pub fn write_blocks(&mut self, data: &Vec<(u32, DeviceWord, Vec<u16>)>) -> Result<(), u16> {
     return write_blocks(&mut self.stream, data);
   }
 }
-
 
 #[no_mangle]
 extern "C" fn slmp_connect(ip:*const c_char,port:u16) -> *mut TcpStream {
@@ -91,12 +106,13 @@ extern "C" fn slmp_shutdown(s:*mut TcpStream) {
   stream.shutdown(Shutdown::Both);
 }
 
+//dev
+// 1 保持寄存器 D
+// 2 文件寄存器 R
 #[no_mangle]
 extern "C" fn slmp_read_words(
-  //dev
-  // 1 保持寄存器 D
-  // 2 文件寄存器 R
-  stream: &mut TcpStream, head_number:u32,dev:u16, number:u16, data: *mut u16) ->i32 {
+  stream: &mut TcpStream, head_number: c_uint, dev: c_ushort, number: c_ushort, data: *mut c_ushort
+) ->i32 {
   if data.is_null() {
     return -1;
   }
@@ -123,9 +139,48 @@ extern "C" fn slmp_read_words(
   return out;
 }
 
+//dev
+// 1 内部继电器 M
+// 2 输入继电器 X
+// 3 输出继电器 Y
+#[no_mangle]
+extern "C" fn slmp_read_bits(
+  stream: &mut TcpStream, head_number: c_uint, dev: c_ushort, number: c_ushort, data: *mut c_uchar
+) ->i32 {
+  if data.is_null() {
+    return -1;
+  }
+  let mut out: i32 = 0;
+  let device = match dev {
+    1 => DeviceBit::M,
+    2 => DeviceBit::X,
+    3 => DeviceBit::Y,
+    _ => DeviceBit::M,
+  };
+  let r = read_bits(stream, device, head_number, number);
+  match r {
+    Ok(r) => {
+      for i in 0..number {
+        unsafe {
+          let p: *mut u8 = data.offset(i as isize);
+          *p = if r[i as usize] { 1 } else { 0 };
+        }
+      }
+      out = 0;
+    },
+    Err(0) => { out = -1; },
+    Err(code) => { out = code as i32; }
+  };
+  return out;
+}
+
+//dev
+// 1 保持寄存器 D
+// 2 文件寄存器 R
 #[no_mangle]
 extern "C" fn slmp_write_words(
-  stream:&mut TcpStream, head_number:u32,dev:u16,number:u16,data:*const u16) ->i32 {
+  stream:&mut TcpStream, head_number:u32,dev:u16,number:u16,data:*const u16
+) ->i32 {
   if data.is_null() {
     return -1;
   }
@@ -151,6 +206,40 @@ extern "C" fn slmp_write_words(
   return out;
 }
 
+//dev
+// 1 内部继电器 M
+// 2 输入继电器 X
+// 3 输出继电器 Y
+#[no_mangle]
+extern "C" fn slmp_write_bits(
+  stream:&mut TcpStream, head_number: c_uint, dev: c_ushort, number: c_ushort, data: *const c_uchar
+) ->i32 {
+  if data.is_null() {
+    return -1;
+  }
+  let mut out: i32 = 0;
+  let mut d: Vec<bool> = Vec::with_capacity(number as usize);
+  for i in 0..number {
+    unsafe {
+      let p: *const u8 = data.offset(i as isize);
+      let b = if *p == 0 { false } else { true };
+      d.push(b);
+    }
+  }
+  let device = match dev {
+    1 => DeviceBit::M,
+    2 => DeviceBit::X,
+    2 => DeviceBit::Y,
+    _ => DeviceBit::M,
+  };
+  let r = write_bits(stream, device, head_number, &d);
+  match r {
+    Ok(_) => { out = 0 },
+    Err(0) => { return -1 },
+    Err(code) => { return code as i32 }
+  }
+  return out;
+}
 
 #[test]
 fn testblocks() {
