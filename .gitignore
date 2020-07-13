@@ -61,3 +61,4 @@ dkms.conf
 /target
 **/*.rs.bk
 Cargo.lock
+/example/cpp/cmake-build-debug/

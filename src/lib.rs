@@ -340,12 +340,12 @@ fn testwords() {
 
 #[test]
 fn testbits() {
-  let addr = SocketAddr::from(([192, 168, 0, 10], 5000));
+  let addr = SocketAddr::from(([192, 168, 10, 61], 5000));
   match Slmp::connect(&addr) {
     Ok(mut slmp) => {
       println!("connect successful");
       
-      let r = slmp.read_bits(1, DeviceBit::M, 10);
+      let r = slmp.read_bits(3, DeviceBit::M, 9);
       match r {
         Ok(vlist) => {
           print!("read bits ok. [ ");
@@ -359,7 +359,7 @@ fn testbits() {
         }
       }
       
-      if let Err(code) = slmp.write_bits(1, DeviceBit::M, vec![true, false, true, true, false, true, true, true].as_slice()) {
+      if let Err(code) = slmp.write_bits(3, DeviceBit::M, vec![true, false, true, true, false, true, true, true, false].as_slice()) {
         println!("write bits err code = {}", code);
       } else {
         println!("write bits ok");
