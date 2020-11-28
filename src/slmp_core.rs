@@ -1,6 +1,7 @@
 use std::net::{TcpStream};
 use std::io::prelude::*;
 use std::vec;
+use std::time::Instant;
 
 //字软元件
 #[derive(Clone,Copy)]
@@ -845,6 +846,7 @@ pub(crate) fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32,
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 128];
     if let Ok(n) = stream.read(&mut b) {
@@ -853,6 +855,9 @@ pub(crate) fn read_words(stream: &mut TcpStream,dev:DeviceWord, head_number:u32,
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
@@ -889,7 +894,8 @@ pub(crate) fn read_bits(stream: &mut TcpStream,dev:DeviceBit, head_number:u32, n
     return out
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
-  
+
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 128];
     if let Ok(n) = stream.read(&mut b) {
@@ -898,6 +904,9 @@ pub(crate) fn read_bits(stream: &mut TcpStream,dev:DeviceBit, head_number:u32, n
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
@@ -939,6 +948,7 @@ pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 128];
     if let Ok(n) = stream.read(&mut b) {
@@ -947,6 +957,9 @@ pub(crate) fn write_words(stream:&mut TcpStream,dev:DeviceWord, head_number:u32,
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
@@ -983,7 +996,8 @@ pub(crate) fn write_bits(stream:&mut TcpStream,dev:DeviceBit, head_number:u32,da
     return out
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
-  
+
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 128];
     if let Ok(n) = stream.read(&mut b) {
@@ -992,6 +1006,9 @@ pub(crate) fn write_bits(stream:&mut TcpStream,dev:DeviceBit, head_number:u32,da
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
@@ -1032,6 +1049,7 @@ pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 256];
     if let Ok(n) = stream.read(&mut b) {
@@ -1040,6 +1058,9 @@ pub(crate) fn read_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,u16)>)
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
@@ -1078,6 +1099,7 @@ pub(crate) fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,Vec<u
   }
   let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
+  let now_time = Instant::now();
   'a: loop {
     let mut b = [0u8; 256];
     if let Ok(n) = stream.read(&mut b) {
@@ -1086,6 +1108,9 @@ pub(crate) fn write_blocks(stream:&mut TcpStream,data:&Vec<(u32,DeviceWord,Vec<u
       }
       match res.deserialization(&buffer) {
         Ok(0) => { //报文不完整
+          if now_time.elapsed().as_millis() > 2000{
+            return out
+          }
           continue;
         },
         Ok(n) => { //已解析出完整报文
