@@ -1,6 +1,6 @@
 [package]
 name = "slmp"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["sanri <engineer_tang@qq.com>"]
 edition = "2018"
 
