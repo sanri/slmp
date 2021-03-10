@@ -36,7 +36,7 @@ impl Slmp {
         }
     }
 
-    pub fn shutdown(mut self) -> Result<(), ()> {
+    pub fn shutdown(&mut self) -> Result<(), ()> {
         if let Some(stream) = self.stream.first_mut() {
             let _ = stream.shutdown(Shutdown::Both);
         }
