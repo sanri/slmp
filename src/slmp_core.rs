@@ -851,6 +851,10 @@ pub(crate) async fn read_words(
         let mut b = [0u8; 128];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
@@ -909,6 +913,10 @@ pub(crate) async fn read_bits(
         let mut b = [0u8; 128];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
@@ -970,6 +978,10 @@ pub(crate) async fn write_words(
         let mut b = [0u8; 128];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
@@ -1029,6 +1041,10 @@ pub(crate) async fn write_bits(
         let mut b = [0u8; 128];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
@@ -1087,6 +1103,10 @@ pub(crate) async fn read_blocks(
         let mut b = [0u8; 256];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
@@ -1143,6 +1163,10 @@ pub(crate) async fn write_blocks(
         let mut b = [0u8; 256];
         let r = timeout(Duration::from_secs(2), async { stream.read(&mut b).await }).await;
         match r {
+            Ok(0) => {
+                async_std::task::sleep(Duration::from_millis(100)).await;
+                continue 'a;
+            }
             Ok(n) => {
                 for i in 0..n {
                     buffer.push(b[i]);
